@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 const HERO_CAMPUS_IMAGE = '/src/assets/images/hero_campus_clean_1795061537214.jpg';
 
 export default function LoginPage() {
-  const { user, bootstrapStatus, login, register } = useAuth();
+  const { user, loading, bootstrapStatus, login, register } = useAuth();
   const navigate = useNavigate();
 
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -138,6 +138,20 @@ export default function LoginPage() {
                   </p>
                 </div>
               </div>
+            </div>
+          )}
+
+          {!loading && !bootstrapStatus && (
+            <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-xs leading-relaxed text-amber-900">
+              <p className="font-bold">Konfigurasi Hosting Web Belum Terhubung ke Supabase</p>
+              <p className="mt-0.5 text-amber-800">
+                Server API (<code className="font-mono font-semibold">/api</code>) tidak aktif di
+                hosting ini dan variabel{' '}
+                <code className="font-mono font-semibold">VITE_SUPABASE_URL</code> serta{' '}
+                <code className="font-mono font-semibold">VITE_SUPABASE_ANON_KEY</code> belum
+                terpasang saat proses build. Tambahkan kedua variabel tersebut pada Environment
+                Variables hosting Anda lalu lakukan redeploy.
+              </p>
             </div>
           )}
 

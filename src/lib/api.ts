@@ -1,4 +1,5 @@
 import { getSupabaseClient } from './supabase';
+import { handleSupabaseFallback } from './supabaseFallback';
 
 const TOKEN_STORAGE_KEY = 'smk_pu_session_token';
 let memoryToken: string | null = null;
@@ -52,12 +53,38 @@ export async function apiRequest<T>(
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const response = await fetch(path, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      ...options,
+      headers,
+    });
+  } catch {
+    const client = await getSupabaseClient();
+    if (client && path.startsWith('/api/')) {
+      return (await handleSupabaseFallback(client, path, options)) as T;
+    }
+    throw new Error(`Tidak dapat terhubung ke server (${path}).`);
+  }
 
-  const payload = await response.json().catch(() => ({}));
+  const contentType = response.headers.get('content-type') || '';
+  const isJson = contentType.includes('application/json');
+
+  // Jika dihosting sebagai web statis (Vercel/Netlify), /api/* akan 404 atau membalas HTML SPA.
+  // Alihkan otomatis ke koneksi Supabase klien langsung jika VITE_SUPABASE_* tersedia.
+  if (path.startsWith('/api/') && (response.status === 404 || !isJson)) {
+    const client = await getSupabaseClient();
+    if (client) {
+      return (await handleSupabaseFallback(client, path, options)) as T;
+    }
+    if (path === '/api/auth/login' || path === '/api/auth/register') {
+      throw new Error(
+        'Server backend (/api) tidak aktif di hosting ini dan variabel VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY belum terpasang saat build. Tambahkan keduanya di Environment Variables hosting Anda lalu redeploy.'
+      );
+    }
+  }
+
+  const payload = isJson ? await response.json().catch(() => ({})) : {};
   if (!response.ok) {
     throw new Error(payload.error || `Permintaan ${path} gagal (${response.status})`);
   }
