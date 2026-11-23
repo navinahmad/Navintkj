@@ -11,6 +11,7 @@ import {
 
 interface DashboardData {
   today: string;
+  schemaReady?: boolean;
   myTodayAttendance: EmployeeAttendanceRecord | null;
   myRecentAttendance: EmployeeAttendanceRecord[];
   stats: {
@@ -138,6 +139,20 @@ export default function DashboardPage() {
           </div>
         </div>
       </section>
+
+      {data && data.schemaReady === false && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-bold">Tabel Database Supabase Belum Dijalankan</p>
+          <p className="mt-1 text-xs leading-relaxed text-amber-800">
+            Autentikasi Anda sudah aktif, tetapi tabel relasional (profiles, majors, classes,
+            students, employee_attendance, student_attendance) belum dibuat di Supabase. Jalankan
+            file <code className="font-mono font-semibold">supabase/schema.sql</code> dan{' '}
+            <code className="font-mono font-semibold">supabase/seed.sql</code> pada{' '}
+            <strong>Supabase Dashboard → SQL Editor</strong> agar fitur absensi dan data siswa dapat
+            digunakan sepenuhnya.
+          </p>
+        </div>
+      )}
 
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">

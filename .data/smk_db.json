@@ -1,0 +1,162 @@
+{
+  "users": [
+    {
+      "id": "3047a67a-3935-440d-9166-9e4a2cf61449",
+      "email": "navinahmad2013@gmail.com",
+      "passwordHash": "69428d43cbc61675699305d14c115a5c:d08d531a39eb97aa177bee9c9b7b8b71095fa4cc03cd8721efbb8b04c1574d5e46667b72a0371a7e0ce584153cd847e012fdf4a33b0471052e87fd1c1289933e",
+      "fullName": "Administrator SMK Prima Unggul",
+      "nip": "19850101201001",
+      "jabatan": "Administrator Sistem",
+      "role": "admin",
+      "createdAt": "2026-11-20T02:40:13.157Z"
+    }
+  ],
+  "students": [
+    {
+      "id": "d2b3691b-87ab-45c2-8262-76796904dd9a",
+      "nis": "20261001",
+      "name": "Aditya Pratama",
+      "className": "XI TKJ 1",
+      "major": "TKJ",
+      "createdAt": "2026-11-20T01:21:42.396Z"
+    },
+    {
+      "id": "04ef402a-26b6-4e7d-aa3b-4fd15a1a40f9",
+      "nis": "20261002",
+      "name": "Nabila Putri Rahayu",
+      "className": "XI TKJ 1",
+      "major": "TKJ",
+      "createdAt": "2026-11-20T01:21:42.396Z"
+    },
+    {
+      "id": "ebd0e9a5-4e90-4bba-b10c-cf216e5d592f",
+      "nis": "20261003",
+      "name": "Rizky Maulana",
+      "className": "XI TKJ 1",
+      "major": "TKJ",
+      "createdAt": "2026-11-20T01:21:42.396Z"
+    },
+    {
+      "id": "e2aa30fc-5aa2-4566-9a4b-a716323c6261",
+      "nis": "20262001",
+      "name": "Siti Aisyah",
+      "className": "XI DKV 1",
+      "major": "DKV",
+      "createdAt": "2026-11-20T01:21:42.396Z"
+    },
+    {
+      "id": "92aaec5c-9d85-4f39-8c8d-a3cafdc029ac",
+      "nis": "20262002",
+      "name": "Bagas Darmawan",
+      "className": "XI DKV 1",
+      "major": "DKV",
+      "createdAt": "2026-11-20T01:21:42.396Z"
+    },
+    {
+      "id": "acac0aa0-7b33-4bb8-a367-5442638dd370",
+      "nis": "20262003",
+      "name": "Keisha Maharani",
+      "className": "XI DKV 1",
+      "major": "DKV",
+      "createdAt": "2026-11-20T01:21:42.396Z"
+    },
+    {
+      "id": "0b48f8ff-20ae-4d96-80b3-fa61e548e2f6",
+      "nis": "20263001",
+      "name": "Dina Febrianti",
+      "className": "XI AK 1",
+      "major": "AK",
+      "createdAt": "2026-11-20T01:21:42.396Z"
+    },
+    {
+      "id": "435a30ba-8ed1-4dbe-94b1-cf47147f59b8",
+      "nis": "20263002",
+      "name": "Hendra Wijaya",
+      "className": "XI AK 1",
+      "major": "AK",
+      "createdAt": "2026-11-20T01:21:42.396Z"
+    },
+    {
+      "id": "664f6fe2-82a0-49a0-a46d-257f7f76a659",
+      "nis": "20263003",
+      "name": "Rani Puspitasari",
+      "className": "XI AK 1",
+      "major": "AK",
+      "createdAt": "2026-11-20T01:21:42.396Z"
+    },
+    {
+      "id": "d934a6bd-ab8a-4fd7-bb60-1fe9d073966f",
+      "nis": "20264001",
+      "name": "Fajar Nugroho",
+      "className": "XI BC 1",
+      "major": "BC",
+      "createdAt": "2026-11-20T01:21:42.396Z"
+    },
+    {
+      "id": "43f5e1ae-72a3-451f-bd16-7e46503b5308",
+      "nis": "20264002",
+      "name": "Tara Melati",
+      "className": "XI BC 1",
+      "major": "BC",
+      "createdAt": "2026-11-20T01:21:42.396Z"
+    },
+    {
+      "id": "ad3cdbe7-3b8a-4808-aad5-e2effb193901",
+      "nis": "20264003",
+      "name": "Galih Santoso",
+      "className": "XI BC 1",
+      "major": "BC",
+      "createdAt": "2026-11-20T01:21:42.396Z"
+    },
+    {
+      "id": "c54a05b1-70ab-49ea-b5d9-6146f4f888a1",
+      "nis": "20265001",
+      "name": "Intan Permatasari",
+      "className": "XI MPLB 1",
+      "major": "MPLB",
+      "createdAt": "2026-11-20T01:21:42.396Z"
+    },
+    {
+      "id": "86d0885a-3494-4287-a59a-70c945927ae8",
+      "nis": "20265002",
+      "name": "Yusuf Ramadhan",
+      "className": "XI MPLB 1",
+      "major": "MPLB",
+      "createdAt": "2026-11-20T01:21:42.396Z"
+    },
+    {
+      "id": "f6f8c1af-6f5c-4ce1-bf12-f05b4e458b36",
+      "nis": "20265003",
+      "name": "Dewi Lestari",
+      "className": "XI MPLB 1",
+      "major": "MPLB",
+      "createdAt": "2026-11-20T01:21:42.396Z"
+    },
+    {
+      "id": "e60b02ed-e0b2-446d-9f88-997706a0a3ff",
+      "nis": "20266001",
+      "name": "Alvin Kurniawan",
+      "className": "XI BD 1",
+      "major": "BD",
+      "createdAt": "2026-11-20T01:21:42.396Z"
+    },
+    {
+      "id": "086a3028-e5dc-4704-9a20-fb1c4359ea6f",
+      "nis": "20266002",
+      "name": "Shinta Anggraini",
+      "className": "XI BD 1",
+      "major": "BD",
+      "createdAt": "2026-11-20T01:21:42.396Z"
+    },
+    {
+      "id": "99479b81-28bf-4328-8e8e-98112542d048",
+      "nis": "20266003",
+      "name": "Farhan Hidayat",
+      "className": "XI BD 1",
+      "major": "BD",
+      "createdAt": "2026-11-20T01:21:42.396Z"
+    }
+  ],
+  "employeeAttendance": [],
+  "studentAttendance": []
+}

@@ -141,6 +141,17 @@ export default function LoginPage() {
             </div>
           )}
 
+          {bootstrapStatus && bootstrapStatus.schemaReady === false && (
+            <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-xs leading-relaxed text-amber-900">
+              <p className="font-bold">Catatan Skema Database Supabase</p>
+              <p className="mt-0.5 text-amber-800">
+                Anda tetap dapat mendaftar atau masuk sekarang. Setelah login, jalankan{' '}
+                <code className="font-mono font-semibold">supabase/schema.sql</code> di SQL Editor
+                Supabase untuk mengaktifkan tabel absensi dan siswa.
+              </p>
+            </div>
+          )}
+
           {/* Segmented Tab Switcher */}
           <div className="mt-6 grid grid-cols-2 gap-1 rounded-lg bg-slate-200/70 p-1">
             <button

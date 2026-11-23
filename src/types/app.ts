@@ -59,6 +59,8 @@ export interface BootstrapStatus {
   hasUsers: boolean;
   provider: 'supabase' | 'local';
   supabaseConfigured: boolean;
+  schemaReady?: boolean;
+  adminSyncAvailable?: boolean;
 }
 
 export const ROLE_LABELS: Record<UserRole, string> = {

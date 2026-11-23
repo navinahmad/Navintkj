@@ -165,9 +165,10 @@ CREATE INDEX IF NOT EXISTS idx_stu_att_student_date ON public.student_attendance
 CREATE INDEX IF NOT EXISTS idx_stu_att_date ON public.student_attendance(date DESC);
 
 -- ----------------------------------------------------------------------------
--- 7. Relational Views untuk Pelaporan & Rekap Cepat
+-- 7. Relational Views untuk Pelaporan & Rekap Cepat (security_invoker = true)
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW public.v_students_detail AS
+CREATE OR REPLACE VIEW public.v_students_detail
+WITH (security_invoker = true) AS
 SELECT
   s.id,
   s.nis,
@@ -182,7 +183,8 @@ FROM public.students s
 JOIN public.classes c ON c.id = s.class_id
 JOIN public.majors m ON m.code = c.major_code;
 
-CREATE OR REPLACE VIEW public.v_student_attendance_recap AS
+CREATE OR REPLACE VIEW public.v_student_attendance_recap
+WITH (security_invoker = true) AS
 SELECT
   sa.id,
   sa.date,
@@ -202,14 +204,97 @@ JOIN public.classes c ON c.id = s.class_id
 LEFT JOIN public.profiles p ON p.id = sa.recorded_by;
 
 -- ----------------------------------------------------------------------------
--- 8. Row Level Security (RLS)
+-- 8. Backfill User yang Sudah Ada di auth.users (jika user dibuat sebelum schema)
 -- ----------------------------------------------------------------------------
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.majors ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.classes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.employee_attendance ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.student_attendance ENABLE ROW LEVEL SECURITY;
+INSERT INTO public.profiles (id, email, full_name, nip, jabatan, role)
+SELECT
+  au.id,
+  au.email,
+  COALESCE(au.raw_user_meta_data->>'full_name', split_part(au.email, '@', 1)),
+  COALESCE(au.raw_user_meta_data->>'nip', ''),
+  COALESCE(au.raw_user_meta_data->>'jabatan', ''),
+  CASE
+    WHEN (SELECT count(*) FROM public.profiles) = 0
+      AND au.id = (SELECT id FROM auth.users ORDER BY created_at ASC LIMIT 1)
+    THEN 'admin'
+    ELSE COALESCE(
+      NULLIF(au.raw_user_meta_data->>'role', ''),
+      'tenaga_kependidikan'
+    )
+  END
+FROM auth.users au
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.profiles p WHERE p.id = au.id
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- ----------------------------------------------------------------------------
+-- 9. Fungsi & Hak Akses Login (Bootstrap Check + Sinkronisasi Profil Saat Login)
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.has_registered_users()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (SELECT 1 FROM public.profiles);
+$$;
+
+CREATE OR REPLACE FUNCTION public.ensure_my_profile()
+RETURNS public.profiles
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+DECLARE
+  uid uuid := auth.uid();
+  auth_row auth.users%ROWTYPE;
+  prof_row public.profiles%ROWTYPE;
+  user_count integer;
+  assigned_role text;
+BEGIN
+  IF uid IS NULL THEN
+    RAISE EXCEPTION 'Unauthorized: silakan login terlebih dahulu.';
+  END IF;
+
+  SELECT * INTO prof_row FROM public.profiles WHERE id = uid;
+  IF FOUND THEN
+    RETURN prof_row;
+  END IF;
+
+  SELECT * INTO auth_row FROM auth.users WHERE id = uid;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Akun autentikasi tidak ditemukan.';
+  END IF;
+
+  SELECT count(*) INTO user_count FROM public.profiles;
+  IF user_count = 0 THEN
+    assigned_role := 'admin';
+  ELSE
+    assigned_role := COALESCE(auth_row.raw_user_meta_data->>'role', 'tenaga_kependidikan');
+    IF assigned_role NOT IN ('admin', 'guru', 'tenaga_kependidikan') THEN
+      assigned_role := 'tenaga_kependidikan';
+    END IF;
+  END IF;
+
+  INSERT INTO public.profiles (id, email, full_name, nip, jabatan, role)
+  VALUES (
+    auth_row.id,
+    auth_row.email,
+    COALESCE(auth_row.raw_user_meta_data->>'full_name', split_part(auth_row.email, '@', 1)),
+    COALESCE(auth_row.raw_user_meta_data->>'nip', ''),
+    COALESCE(auth_row.raw_user_meta_data->>'jabatan', ''),
+    assigned_role
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    email = EXCLUDED.email,
+    updated_at = now()
+  RETURNING * INTO prof_row;
+
+  RETURN prof_row;
+END;
+$$;
 
 CREATE OR REPLACE FUNCTION public.current_user_role()
 RETURNS text
@@ -221,67 +306,126 @@ AS $$
   SELECT role FROM public.profiles WHERE id = auth.uid();
 $$;
 
--- Profiles policies
+-- ----------------------------------------------------------------------------
+-- 10. Grants Hak Akses Schema, Tabel, Sequences, Views & Auth Admin
+-- ----------------------------------------------------------------------------
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role, supabase_auth_admin;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated, service_role;
+GRANT SELECT ON public.majors, public.classes TO anon;
+GRANT ALL ON TABLE public.profiles TO supabase_auth_admin;
+GRANT EXECUTE ON FUNCTION public.handle_new_user() TO supabase_auth_admin, service_role;
+GRANT EXECUTE ON FUNCTION public.has_registered_users() TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.ensure_my_profile() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.current_user_role() TO authenticated, service_role;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT ALL ON TABLES TO authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT ALL ON SEQUENCES TO authenticated, service_role;
+
+-- ----------------------------------------------------------------------------
+-- 11. Row Level Security (RLS)
+-- ----------------------------------------------------------------------------
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.majors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.classes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.employee_attendance ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.student_attendance ENABLE ROW LEVEL SECURITY;
+
+-- Profiles policies (hak akses login & manajemen profil)
 DROP POLICY IF EXISTS "Profiles dapat dibaca oleh pemilik atau admin" ON public.profiles;
-CREATE POLICY "Profiles dapat dibaca oleh pemilik atau admin"
+DROP POLICY IF EXISTS "Profiles dapat dibaca user terautentikasi" ON public.profiles;
+CREATE POLICY "Profiles dapat dibaca user terautentikasi"
   ON public.profiles FOR SELECT
-  USING (auth.uid() = id OR public.current_user_role() = 'admin');
+  TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS "User dapat menyisipkan profil sendiri" ON public.profiles;
+CREATE POLICY "User dapat menyisipkan profil sendiri"
+  ON public.profiles FOR INSERT
+  TO authenticated
+  WITH CHECK (auth.uid() = id);
+
+DROP POLICY IF EXISTS "User dapat memperbarui profil sendiri" ON public.profiles;
+CREATE POLICY "User dapat memperbarui profil sendiri"
+  ON public.profiles FOR UPDATE
+  TO authenticated
+  USING (auth.uid() = id OR public.current_user_role() = 'admin')
+  WITH CHECK (auth.uid() = id OR public.current_user_role() = 'admin');
 
 DROP POLICY IF EXISTS "Admin dapat mengelola semua profiles" ON public.profiles;
 CREATE POLICY "Admin dapat mengelola semua profiles"
   ON public.profiles FOR ALL
-  USING (public.current_user_role() = 'admin');
+  TO authenticated
+  USING (public.current_user_role() = 'admin')
+  WITH CHECK (public.current_user_role() = 'admin');
 
 -- Majors & Classes policies
 DROP POLICY IF EXISTS "Majors dapat dibaca semua user terautentikasi" ON public.majors;
 CREATE POLICY "Majors dapat dibaca semua user terautentikasi"
   ON public.majors FOR SELECT
-  USING (auth.role() = 'authenticated');
+  TO authenticated
+  USING (true);
 
 DROP POLICY IF EXISTS "Classes dapat dibaca semua user terautentikasi" ON public.classes;
 CREATE POLICY "Classes dapat dibaca semua user terautentikasi"
   ON public.classes FOR SELECT
-  USING (auth.role() = 'authenticated');
+  TO authenticated
+  USING (true);
 
 DROP POLICY IF EXISTS "Admin dapat mengelola classes" ON public.classes;
 CREATE POLICY "Admin dapat mengelola classes"
   ON public.classes FOR ALL
-  USING (public.current_user_role() = 'admin');
+  TO authenticated
+  USING (public.current_user_role() = 'admin')
+  WITH CHECK (public.current_user_role() = 'admin');
 
 -- Students policies
 DROP POLICY IF EXISTS "Data siswa dapat dibaca oleh user terautentikasi" ON public.students;
 CREATE POLICY "Data siswa dapat dibaca oleh user terautentikasi"
   ON public.students FOR SELECT
-  USING (auth.role() = 'authenticated');
+  TO authenticated
+  USING (true);
 
 DROP POLICY IF EXISTS "Admin dapat mengelola data siswa" ON public.students;
 CREATE POLICY "Admin dapat mengelola data siswa"
   ON public.students FOR ALL
-  USING (public.current_user_role() = 'admin');
+  TO authenticated
+  USING (public.current_user_role() = 'admin')
+  WITH CHECK (public.current_user_role() = 'admin');
 
 -- Employee attendance policies
 DROP POLICY IF EXISTS "Karyawan dapat membaca absensi pribadi atau admin membaca semua" ON public.employee_attendance;
 CREATE POLICY "Karyawan dapat membaca absensi pribadi atau admin membaca semua"
   ON public.employee_attendance FOR SELECT
+  TO authenticated
   USING (auth.uid() = user_id OR public.current_user_role() = 'admin');
 
 DROP POLICY IF EXISTS "Karyawan dapat mengisi absensi pribadi" ON public.employee_attendance;
 CREATE POLICY "Karyawan dapat mengisi absensi pribadi"
   ON public.employee_attendance FOR INSERT
+  TO authenticated
   WITH CHECK (auth.uid() = user_id);
 
 DROP POLICY IF EXISTS "Karyawan dapat memperbarui absensi pribadi (check-out)" ON public.employee_attendance;
 CREATE POLICY "Karyawan dapat memperbarui absensi pribadi (check-out)"
   ON public.employee_attendance FOR UPDATE
-  USING (auth.uid() = user_id OR public.current_user_role() = 'admin');
+  TO authenticated
+  USING (auth.uid() = user_id OR public.current_user_role() = 'admin')
+  WITH CHECK (auth.uid() = user_id OR public.current_user_role() = 'admin');
 
 -- Student attendance policies
 DROP POLICY IF EXISTS "Guru dan Admin dapat membaca absensi siswa" ON public.student_attendance;
 CREATE POLICY "Guru dan Admin dapat membaca absensi siswa"
   ON public.student_attendance FOR SELECT
+  TO authenticated
   USING (public.current_user_role() IN ('admin', 'guru'));
 
 DROP POLICY IF EXISTS "Guru dan Admin dapat mencatat dan mengubah absensi siswa" ON public.student_attendance;
 CREATE POLICY "Guru dan Admin dapat mencatat dan mengubah absensi siswa"
   ON public.student_attendance FOR ALL
-  USING (public.current_user_role() IN ('admin', 'guru'));
+  TO authenticated
+  USING (public.current_user_role() IN ('admin', 'guru'))
+  WITH CHECK (public.current_user_role() IN ('admin', 'guru'));

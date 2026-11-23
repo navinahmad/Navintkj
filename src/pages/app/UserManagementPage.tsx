@@ -5,7 +5,7 @@ import { apiRequest } from '../../lib/api';
 import { ROLE_LABELS, type UserProfile, type UserRole } from '../../types/app';
 
 export default function UserManagementPage() {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, bootstrapStatus } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -156,6 +156,21 @@ export default function UserManagementPage() {
 
   return (
     <div className="space-y-6">
+      {bootstrapStatus?.provider === 'supabase' && bootstrapStatus.adminSyncAvailable === false && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs leading-relaxed text-amber-900">
+          <p className="font-bold">Secret Service Role Supabase Belum Terpasang</p>
+          <p className="mt-1 text-amber-800">
+            Secret <code className="font-mono font-semibold">SUPABASE_SERVICE_ROLE_KEY</code> saat ini
+            masih berisi Publishable Key. Untuk fitur <strong>ubah kata sandi pengguna lain</strong>{' '}
+            dan <strong>hard delete sampai ke Supabase Authentication</strong>, isi{' '}
+            <code className="font-mono font-semibold">SUPABASE_SERVICE_ROLE_KEY</code> dengan Secret
+            Key (<code className="font-mono">service_role</code> /{' '}
+            <code className="font-mono">sb_secret_...</code>) dari{' '}
+            <strong>Supabase Project Settings → API Keys</strong>.
+          </p>
+        </div>
+      )}
+
       <section className="rounded-xl border border-slate-200 bg-white p-6">
         <div className="flex flex-col justify-between gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-center">
           <div>

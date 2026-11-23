@@ -1,7 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { apiRequest, getStoredToken, setStoredToken } from '../lib/api';
-import { supabaseClient } from '../lib/supabase';
-import type { BootstrapStatus, UserProfile } from '../types/app';
+import { getSupabaseClient, supabaseClient } from '../lib/supabase';
+import type { BootstrapStatus, UserProfile, UserRole } from '../types/app';
 
 interface RegisterPayload {
   email: string;
@@ -23,6 +24,47 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function mapProfileRow(row: Record<string, unknown>): UserProfile {
+  const role = String(row.role || 'tenaga_kependidikan');
+  const validRole: UserRole =
+    role === 'admin' || role === 'guru' || role === 'tenaga_kependidikan'
+      ? role
+      : 'tenaga_kependidikan';
+  return {
+    id: String(row.id),
+    email: String(row.email || ''),
+    fullName: String(row.full_name || ''),
+    nip: String(row.nip || ''),
+    jabatan: String(row.jabatan || ''),
+    role: validRole,
+    createdAt: String(row.created_at || new Date().toISOString()),
+  };
+}
+
+async function resolveProfileViaClient(client: SupabaseClient): Promise<UserProfile> {
+  try {
+    return (await apiRequest<{ user: UserProfile }>('/api/auth/me')).user;
+  } catch {
+    const { data: ensured, error: ensureErr } = await client.rpc('ensure_my_profile');
+    if (!ensureErr && ensured) {
+      return mapProfileRow(ensured as Record<string, unknown>);
+    }
+    const { data: authData } = await client.auth.getUser();
+    if (!authData?.user) {
+      throw new Error('Sesi autentikasi tidak ditemukan.');
+    }
+    const { data: prof, error: profErr } = await client
+      .from('profiles')
+      .select('*')
+      .eq('id', authData.user.id)
+      .single();
+    if (profErr || !prof) {
+      throw new Error('Gagal membaca profil pengguna di Supabase.');
+    }
+    return mapProfileRow(prof as Record<string, unknown>);
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,7 +76,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setBootstrapStatus(status);
       return status;
     } catch {
-      return null;
+      const client = await getSupabaseClient();
+      if (!client) return null;
+      try {
+        const { data: hasUsers, error } = await client.rpc('has_registered_users');
+        const fallback: BootstrapStatus = {
+          hasUsers: Boolean(hasUsers),
+          provider: 'supabase',
+          supabaseConfigured: true,
+          schemaReady: !error,
+          adminSyncAvailable: false,
+        };
+        setBootstrapStatus(fallback);
+        return fallback;
+      } catch {
+        return null;
+      }
     }
   }, []);
 
@@ -42,10 +99,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       await loadBootstrap();
+      const client = await getSupabaseClient();
       let hasToken = Boolean(getStoredToken());
-      if (supabaseClient) {
-        const { data } = await supabaseClient.auth.getSession();
+      if (client) {
+        const { data } = await client.auth.getSession();
         if (data.session?.access_token) {
+          setStoredToken(data.session.access_token);
           hasToken = true;
         }
       }
@@ -53,8 +112,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         return;
       }
-      const res = await apiRequest<{ user: UserProfile }>('/api/auth/me');
-      setUser(res.user);
+      if (client) {
+        const profile = await resolveProfileViaClient(client);
+        setUser(profile);
+      } else {
+        const res = await apiRequest<{ user: UserProfile }>('/api/auth/me');
+        setUser(res.user);
+      }
     } catch {
       setStoredToken(null);
       setUser(null);
@@ -65,27 +129,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     refreshAuth();
+    const client = supabaseClient;
+    if (!client) return;
+    const {
+      data: { subscription },
+    } = client.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session?.access_token) {
+        setStoredToken(session.access_token);
+        refreshAuth();
+      } else if (event === 'SIGNED_OUT') {
+        setStoredToken(null);
+        setUser(null);
+      }
+    });
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [refreshAuth]);
 
   const login = useCallback(async (email: string, password: string) => {
-    if (supabaseClient) {
-      const { data, error } = await supabaseClient.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
+    const cleanEmail = email.trim().toLowerCase();
+    const client = await getSupabaseClient();
+    if (client) {
+      const { data, error } = await client.auth.signInWithPassword({
+        email: cleanEmail,
         password,
       });
       if (error || !data.session) {
-        throw new Error(error?.message || 'Email atau kata sandi tidak valid.');
+        const msg = error?.message || '';
+        if (msg.toLowerCase().includes('invalid login credentials')) {
+          throw new Error('Email atau kata sandi tidak valid.');
+        }
+        if (msg.toLowerCase().includes('email not confirmed')) {
+          throw new Error('Email belum dikonfirmasi di Supabase Authentication.');
+        }
+        throw new Error(msg || 'Email atau kata sandi tidak valid.');
       }
       setStoredToken(data.session.access_token);
-      const me = await apiRequest<{ user: UserProfile }>('/api/auth/me');
-      setUser(me.user);
+      const profile = await resolveProfileViaClient(client);
+      setUser(profile);
       await loadBootstrap();
-      return me.user;
+      return profile;
     }
 
     const res = await apiRequest<{ user: UserProfile; token: string }>('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email: cleanEmail, password }),
     });
     setStoredToken(res.token);
     setUser(res.user);
@@ -94,35 +183,76 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [loadBootstrap]);
 
   const register = useCallback(async (payload: RegisterPayload) => {
-    const res = await apiRequest<{
-      user: UserProfile;
-      token: string | null;
-      isFirstAdmin: boolean;
-    }>('/api/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
+    const client = await getSupabaseClient();
+    try {
+      const res = await apiRequest<{
+        user: UserProfile;
+        token: string | null;
+        isFirstAdmin: boolean;
+      }>('/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
 
-    if (supabaseClient) {
-      const { data } = await supabaseClient.auth.signInWithPassword({
+      if (res.token) {
+        setStoredToken(res.token);
+      }
+
+      if (client) {
+        const { data } = await client.auth.signInWithPassword({
+          email: payload.email.trim().toLowerCase(),
+          password: payload.password,
+        });
+        if (data.session?.access_token) {
+          setStoredToken(data.session.access_token);
+        }
+      }
+
+      setUser(res.user);
+      await loadBootstrap();
+      return { user: res.user, isFirstAdmin: res.isFirstAdmin };
+    } catch (err) {
+      if (!client) throw err;
+      const errMsg = err instanceof Error ? err.message : '';
+      if (!errMsg.includes('(404)') && !errMsg.includes('Failed to fetch')) {
+        throw err;
+      }
+
+      const { data: rpcHasUsers } = await client.rpc('has_registered_users');
+      const isFirstAdmin = !Boolean(rpcHasUsers);
+      const { data: signUpData, error: signUpErr } = await client.auth.signUp({
         email: payload.email.trim().toLowerCase(),
         password: payload.password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/login`,
+          data: {
+            full_name: payload.fullName.trim(),
+            nip: (payload.nip || '').trim(),
+            jabatan: (payload.jabatan || '').trim(),
+            role: isFirstAdmin ? 'admin' : 'tenaga_kependidikan',
+          },
+        },
       });
-      if (data.session?.access_token) {
-        setStoredToken(data.session.access_token);
+      if (signUpErr || !signUpData.user) {
+        throw new Error(signUpErr?.message || 'Gagal mendaftarkan akun di Supabase Auth.');
       }
-    } else if (res.token) {
-      setStoredToken(res.token);
+      if (!signUpData.session?.access_token) {
+        throw new Error(
+          'Akun berhasil dibuat, namun Supabase meminta konfirmasi email terlebih dahulu. Periksa email Anda atau nonaktifkan "Confirm email" di Supabase Authentication.'
+        );
+      }
+      setStoredToken(signUpData.session.access_token);
+      const profile = await resolveProfileViaClient(client);
+      setUser(profile);
+      await loadBootstrap();
+      return { user: profile, isFirstAdmin: isFirstAdmin || profile.role === 'admin' };
     }
-
-    setUser(res.user);
-    await loadBootstrap();
-    return { user: res.user, isFirstAdmin: res.isFirstAdmin };
   }, [loadBootstrap]);
 
   const logout = useCallback(async () => {
-    if (supabaseClient) {
-      await supabaseClient.auth.signOut().catch(() => {});
+    const client = await getSupabaseClient();
+    if (client) {
+      await client.auth.signOut().catch(() => {});
     }
     setStoredToken(null);
     setUser(null);
